@@ -119,6 +119,7 @@ Detects `BlobCreated` events and extracts:
 
 Minimal enrichment and routing.
 
+
 ### **Step 4 — Function B (Queue-trigger)**
 
 Validates schema, datatype, required fields.
@@ -129,6 +130,7 @@ Validates schema, datatype, required fields.
 
 * **If invalid:**
   → Store full payload in `/quarantine`
+
 
 ### **Step 5 — Databricks Ingestion**
 
@@ -194,25 +196,13 @@ Gold tables and aggregates are written to **Azure SQL DB / SQL Warehouse**, enab
 
 Dashboards supported:
 
-* **Customer 360**
-* **Fraud Monitoring**
-* **Branch Performance**
-* **ATM & UPI Analytics**
-* **Compliance Reporting**
-
 ### Example placeholders:
 
-```
-![Customer360](images/powerbi-customer360.png)
-![FraudOps](images/powerbi-fraud-ops.png)
-![BranchPerformance](images/powerbi-branch-performance.png)
-```
+<img width="1378" height="809" alt="image" src="https://github.com/user-attachments/assets/251bcecf-191b-4918-8942-edbafd31a2b0" />
 
 ---
 
 # 9. CI/CD
-
-This project uses a **lightweight CI/CD workflow** to automate deployments.
 
 ### **CI Pipeline**
 
@@ -232,8 +222,6 @@ Pipeline can be implemented in:
 
 * GitHub Actions
 * Azure DevOps Pipelines
-
-(Your repository already includes standard folder structures for this.)
 
 ---
 
@@ -278,27 +266,15 @@ Pipeline can be implemented in:
 
 # 12. Screenshot Placeholders
 
-Add the following in `/docs/images` or `/images`:
 
-```
-![ADLS Structure](https://github.com/user-attachments/assets/2fd56804-5f18-44f6-a41d-a2aaa328718e?raw=true)
-![Event Grid Setup](images/event-grid.png)
-![Function App Logs](images/function-app-logs.png)
-![Cosmos DB Data](images/cosmos-collection.png)
-![Databricks Bronze](images/bronze-notebook.png)
-![Databricks Gold](images/gold-notebook.png)
-![SQL Serving](images/sql-warehouse.png)
-![Power BI](images/powerbi.png)
-```
-
----
-
-# 13. Future Enhancements
-
-* Full orchestration using ADF or Synapse
-* Real-time analytics using Azure Stream Analytics
-* ML-based fraud scoring model
-* Expanded SCD2 coverage
+<img width="940" height="377" alt="image" src="https://github.com/user-attachments/assets/f2aa2706-6e4d-4a4a-9646-2e83584d2d09" />
+<img width="602" height="264" alt="image" src="https://github.com/user-attachments/assets/c205e932-2345-414d-887e-14fb93946083" />
+<img width="940" height="392" alt="image" src="https://github.com/user-attachments/assets/cf4a8cd4-e5de-481c-9d8f-2e02c788a672" />
+<img width="1334" height="903" alt="image" src="https://github.com/user-attachments/assets/8cb28aca-71fd-45ef-9e6a-0d6e8b7b0a69" />
+<img width="940" height="396" alt="image" src="https://github.com/user-attachments/assets/fe36b1ec-4f56-45db-9731-1fdcb5bdf416" />
+<img width="940" height="395" alt="image" src="https://github.com/user-attachments/assets/136da805-e33a-4aaa-a286-510210cdee0c" />
+<img width="1622" height="701" alt="image" src="https://github.com/user-attachments/assets/c81112d3-5bc7-49af-ae1e-dd90d92b77ab" />
+<img width="1417" height="810" alt="image" src="https://github.com/user-attachments/assets/ee2996e1-c7df-47aa-8219-2a2675b372a3" />
 
 ---
 
