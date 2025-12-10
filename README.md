@@ -1,158 +1,304 @@
-# Day 1 – End-to-End Setup & Development Summary
+# Azure Banking Data Platform 
 
-## Goal for Day 1
-Build the integration workflow:
-Blob Added in ADLS → Event Grid → Azure Function → Service Bus Queue  
-Successfully implemented, tested, and verified the entire flow.
+A production-grade, real-time data engineering pipeline built using **Azure Event-Driven Architecture**, **Cosmos DB**, and the **Databricks Lakehouse Platform**.
 
-# 1. Created Required Azure Resources
+---
 
-## 1.1 Storage Account (ADLS Gen2)
-•	Name: banksourcedata  
-•	Role: Source location where folders/files (atm, customers, upi) arrive.  
-•	Enabled hierarchical namespace (ADLS Gen2).  
-•	Created container: raw  
+# 1. Project Overview
 
-##  1.2 Function App
-•	Name: Bank-Func-app  
-•	Runtime: Python  
-•	Hosting: Consumption plan  
-•	Purpose: To receive Event Grid events and push blob metadata to Service Bus.  
+This solution delivers an end-to-end banking data platform capable of handling **real-time ATM and UPI transactions**, **customer profile updates**, **KYC records**, and **branch performance analytics**.
 
-##  1.3 Service Bus Namespace
-•	Name: Service-Bus-Bank  
-•	Pricing: Basic Tier  
-•	Purpose: Queue messages from Function App.  
+The platform integrates:
 
-##  1.4 Service Bus Queue
-•	Name: queue_ingestion  
-•	Role: Temporary buffer for blob processing events.  
+* **Event-driven ingestion** using Event Grid, Azure Functions, and Service Bus
+* **Operational data store** using Azure Cosmos DB
+* **Data Lakehouse ETL** using Databricks (Bronze → Silver → Gold)
+* **SCD-2 dimension management**
+* **SQL Data Warehouse serving layer**
+* **Power BI dashboards for Customer 360, Fraud Metrics, Branch Performance**
+* **CI/CD workflow using GitHub Actions / Azure DevOps**
 
+---
 
-# 2. Configure Event Subscriptions (Event Grid)
+# 2. High-Level Architecture
 
-##  2.1 Enable Event Grid on Storage Account
-•	Navigated to: Storage Account → Events  
-•	Created a System Topic automatically:  
-	o	Name: Event-Trigger-New-File-Topic  
-	o	Topic Type: Microsoft.Storage.StorageAccounts  
-
-##  2.2 Event Subscription
-•	Name: Event-Trigger-New-File  
-•	Trigger Types:  
-	o	BlobCreated  
-	o	BlobDeleted  
-•	Endpoint Type: Azure Function  
-•	Selected function: EgBlobToQueue  
-
-This ensures that whenever a new blob is uploaded, Event Grid immediately triggers our Function App.
-
-
-# 3. Built the EventGrid-Triggered Azure Function
-
-##  3.1 Code in __init__.py
-
-```python
-import json
-import logging
-import azure.functions as func
-from azure.servicebus import ServiceBusClient, ServiceBusMessage
-import os
-
-def main(event: func.EventGridEvent):
-
-    logging.info("Event Grid Trigger Fired for New File Upload")
-
-    event_data = event.get_json()
-    url = event_data["url"]                         # file URL
-    file_name = url.split("/")[-1]                 # extract filename
-
-    logging.info(f"File Uploaded: {file_name}")
-
-    # Basic Validation
-    if not file_name.endswith(".csv"):
-        logging.error("Invalid file format. Only CSV allowed.")
-        return
-
-    # Detect source type based on filename
-    source_type = ""
-    if "atm" in file_name.lower():
-        source_type = "ATM"
-    elif "upi" in file_name.lower():
-        source_type = "UPI"
-    elif "customer" in file_name.lower():
-        source_type = "CUSTOMER"
-    else:
-        source_type = "UNKNOWN"
-
-    # Prepare message body
-    message_body = {
-        "file_url": url,
-        "file_name": file_name,
-        "source_type": source_type
-    }
-
-    logging.info(f"Sending message to Service Bus: {message_body}")
-
-    # Send to Service Bus Queue
-    sb_client = ServiceBusClient.from_connection_string(
-        conn_str=os.environ["SERVICE_BUS_CONNECTION_STRING"]
-    )
-
-    queue_name = os.environ["SERVICE_BUS_QUEUE_NAME"]
-
-    with sb_client:
-        sender = sb_client.get_queue_sender(queue_name=queue_name)
-        with sender:
-            sb_message = ServiceBusMessage(json.dumps(message_body))
-            sender.send_messages(sb_message)
-
-    logging.info("Message sent to Service Bus Queue successfully.")
+```
++------------------+          +-----------------+         +----------------+
+|   ADLS Raw       |  Event   |  Azure Function |  Msg    |   Service Bus  |
+| (ATM/UPI/KYC)    +--------->+      (A)        +-------->+     Queue      |
++------------------+          +-----------------+         +----------------+
+                                           |  Trigger
+                                           v
+                                    +---------------+
+                                    | Azure Function|
+                                    |      (B)      |
+                                    +-------+-------+
+                                            |
+                   +------------------------+-----------------------------+
+                   |                                                      |
+          Valid Data to Cosmos DB                               Invalid → ADLS/quarantine
+                   |                                              Metadata → ADLS/metadata
+                   v
+        +----------------------+  
+        |   Cosmos DB (ODS)    |
+        +----------+-----------+
+                   |
+                   v
+    +----------------------------------+
+    |     Databricks Lakehouse        |
+    |  Bronze → Silver → Gold Layers  |
+    +------------------+---------------+
+                       |
+                       v
+              +-----------------+
+              | SQL Data Ware-  |
+              | house (Serving) |
+              +-------+---------+
+                      |
+                      v
+              +----------------+
+              |   Power BI     |
+              | Dashboards     |
+              +----------------+
 ```
 
-The function performs exactly THREE tasks:
-1.	Receive Event Grid event
-2.	Extract blob URL
-3.	Push message to file-queue
+---
 
+# 3. Azure Resources Used
 
-# 4. Configured Application Settings
-Inside func-app-bank → Configuration:
-Added:
+| Service                              | Purpose                                                                 |
+| ------------------------------------ | ----------------------------------------------------------------------- |
+| **ADLS Gen2**                        | Raw, Quarantine, Metadata, Bronze, Silver, Gold zones                   |
+| **Event Grid**                       | Detects new file uploads in ADLS                                        |
+| **Azure Function A**                 | Receives EventGrid events and pushes file metadata into Service Bus     |
+| **Service Bus Queue**                | Reliable buffer for downstream processing                               |
+| **Azure Function B (Queue Trigger)** | Validates payload → writes valid records to Cosmos DB / invalid to ADLS |
+| **Cosmos DB**                        | Operational store for ATM, UPI, and Customer data                       |
+| **Databricks**                       | Orchestrates Bronze → Silver → Gold ETL                                 |
+| **Azure SQL DB / SQL DWH**           | Serving layer for BI tools                                              |
+| **Power BI**                         | Analytics dashboards                                                    |
+| **CI/CD (GitHub Actions)**           | Notebook sync + Function App deployment                                 |
 
-<img width="974" height="635" alt="image" src="https://github.com/user-attachments/assets/fdcfdf58-f905-4bcf-b6d1-cb9199faf7fd" />
+---
 
+# 4. ADLS Folder Structure
 
-# 5. Tested End-to-End Workflow
+```
+/raw
+    /atm
+    /upi
+    /customers
+    /kyc
 
-## Step 1: Uploaded sample files in ADLS
-Locations tested:
-•	/raw/atm
-•	/raw/customers
-•	/raw/upi
+/quarantine
+/metadata
 
-## Step 2: Verified Events
-In Storage → Events:
-•	Event Grid showed Published, Delivered, Matched events
-•	Successful delivery count increased
+/etl
+    /bronze
+    /silver
+    /gold
+```
 
-## Step 3: Function App Logs
-Under Bank-Func-app→ Logs:
-•	Confirmed Function triggered multiple times
-•	No errors
-•	Host running fine
+---
 
-## Step 4: Service Bus Verification
-In Service-Bus-Bank→ queue_ingestion:
-•	Successful Requests count increased
-•	Message Count = count increased
-•	No dead-letter
-•	Queue successfully received + auto-cleared messages
+# 5. Ingestion Workflow
 
-All parts worked correctly.
+### **Step 1 — File lands in ADLS (raw)**
 
+ATM, UPI, Customer, KYC files are uploaded into `/raw`.
 
-# 6. Final Architecture Validated (Day 1 Output)
-ADLS Gen2  →  Event Grid  →  Function App  →  Service Bus Queue
-Everything is connected and functional.
+### **Step 2 — Event Grid triggers Function A**
+
+Detects `BlobCreated` events and extracts:
+
+* file_url
+* file_name
+* source_type (ATM/UPI/CUSTOMER/KYC)
+
+### **Step 3 — Function A → Event Grid Trigger**
+
+Minimal enrichment and routing.
+
+### **Step 4 — Function B (Queue-trigger)**
+
+Validates schema, datatype, required fields.
+
+* **If valid:**
+  → Insert into Cosmos DB
+  → Store metadata in `/metadata`
+
+* **If invalid:**
+  → Store full payload in `/quarantine`
+
+### **Step 5 — Databricks Ingestion**
+
+* Reads **Cosmos DB** for transactions & customer profiles
+* Reads **KYC directly from ADLS**
+
+---
+
+# 6. Databricks ETL (Lakehouse)
+
+## **6.1 Bronze Layer**
+
+* Raw ingestion from Cosmos DB
+* KYC raw ingestion from ADLS
+* Light parsing
+* No transformations
+* Stored as Delta tables
+
+## **6.2 Silver Layer**
+
+* Standardized schema
+* Data quality cleanup
+* Normalized structures
+* Reference cleanup
+* Joins across sources
+* Error-handled and type-safe
+
+## **6.3 Gold Layer (Final Analytics Layer)**
+
+### **Dimensions**
+
+* `dim_customer`
+* `dim_account`
+* `dim_kyc`
+* `dim_date`
+
+### **SCD-2 Dimensions**
+
+* `dim_customer_scd2`
+* `dim_account_scd2`
+
+### **Facts**
+
+* `fact_transactions`
+* `fact_customer_profile`
+
+### **Aggregates**
+
+* Daily transaction summary
+* Customer monthly spending
+* Branch performance
+* Channel-wise distribution
+
+---
+
+# 7. Serving Layer (SQL Data Warehouse)
+
+Gold tables and aggregates are written to **Azure SQL DB / SQL Warehouse**, enabling optimized BI reporting.
+
+---
+
+# 8. Power BI Dashboards
+
+Dashboards supported:
+
+* **Customer 360**
+* **Fraud Monitoring**
+* **Branch Performance**
+* **ATM & UPI Analytics**
+* **Compliance Reporting**
+
+### Example placeholders:
+
+```
+![Customer360](images/powerbi-customer360.png)
+![FraudOps](images/powerbi-fraud-ops.png)
+![BranchPerformance](images/powerbi-branch-performance.png)
+```
+
+---
+
+# 9. CI/CD
+
+This project uses a **lightweight CI/CD workflow** to automate deployments.
+
+### **CI Pipeline**
+
+* Linting & quality checks
+* Validate Python Function code
+* Validate Databricks notebooks
+* Package Function App
+
+### **CD Pipeline**
+
+* Deploy Azure Function App
+* Sync Databricks notebooks (via Databricks CLI)
+* Optionally trigger Databricks job
+* Validate Cosmos DB + ADLS connectivity
+
+Pipeline can be implemented in:
+
+* GitHub Actions
+* Azure DevOps Pipelines
+
+(Your repository already includes standard folder structures for this.)
+
+---
+
+# 10. Repository Structure
+
+```
+/src
+    /function_app
+    /notebooks
+         /bronze
+         /silver
+         /gold
+    /powerbi
+    /sql
+/docs
+    /images
+    architecture.md
+/readme.md
+```
+
+---
+
+# 11. How to Run the Project
+
+### **Prerequisites**
+
+* Azure subscription
+* Cosmos DB + ADLS + Function App + Service Bus
+* Databricks Workspace
+* SQL Database
+
+### **Execution Steps**
+
+1. Upload sample data into `/raw` in ADLS
+2. Event Grid → Functions → Service Bus → Cosmos DB automatically ingests
+3. Databricks Jobs run Bronze → Silver → Gold pipeline
+4. Gold tables are published to SQL DWH
+5. Power BI connects to SQL DWH for reporting
+6. CI/CD handles notebook + function deployments
+
+---
+
+# 12. Screenshot Placeholders
+
+Add the following in `/docs/images` or `/images`:
+
+```
+![ADLS Structure](https://github.com/user-attachments/assets/2fd56804-5f18-44f6-a41d-a2aaa328718e?raw=true)
+![Event Grid Setup](images/event-grid.png)
+![Function App Logs](images/function-app-logs.png)
+![Cosmos DB Data](images/cosmos-collection.png)
+![Databricks Bronze](images/bronze-notebook.png)
+![Databricks Gold](images/gold-notebook.png)
+![SQL Serving](images/sql-warehouse.png)
+![Power BI](images/powerbi.png)
+```
+
+---
+
+# 13. Future Enhancements
+
+* Full orchestration using ADF or Synapse
+* Real-time analytics using Azure Stream Analytics
+* ML-based fraud scoring model
+* Expanded SCD2 coverage
+
+---
 
